@@ -1,0 +1,227 @@
+---
+title: "TSP_new_Version"
+author: "Kristoffer Kerkhof"
+date: "20 2 2020"
+output: pdf_document
+---
+
+# Monte Carlo algorithm for the Travelling Salesman problem.
+
+## Lattice
+
+A 10x10 grid is created in which each dots represent a city or location the Salesman has to visit. The Distance between two points is equal over the wohle lattice and is given by the euclidean metric.  
+All information is saved in a dataframe. The (x,y)-coordiantes are saved under \$x and \$y. With \$start_position the first city is valued with $-1$ and every other with$0$. This makes sure that we always start at the same spot. With \$ordering the cities are asigned randnom numbers from 1 to 100. After this number of the cities are ordered and the path is calculated (with simulated annealing).
+
+ACO 
+
+#```{r}
+gitter <- (10*10)
+l<-1
+k<-1
+map <- array(0, dim=c(2,gitter))
+for (i in 1:gitter) {
+      map[1,i] <- k
+      map[2,i] <- l
+      k<-k+1
+      if(k==sqrt(gitter)+1) {
+        k<-1
+        l<-l+1
+      }
+}
+point <- c(1:gitter)
+visited_01 <- 0
+#ordering <- sample.int(size=25,n=25,replace = FALSE) #give every citiy a number in the first tour
+#mapplan <- data.frame(x=map[1,],y=map[2,],ordering)
+#plot(x=mapplan$x,y=mapplan$y,xlab = "",ylab = "",pch=16,cex=0.8,cex.main=1.5,cex.lab=1,cex.axis=0.8,las=1,bty="o")
+mapplan_01 <- data.frame(x=map[1,],y=map[2,],point,visited_01)
+mapplan_01
+#```
+```{r}
+data <- read.csv("bier127.txt",header = FALSE,skip = 6,nrows = 127,sep = "")
+#data
+mapplan<- data.frame(x=data$V2,y=data$V3,point=data$V1)
+mapplan_01 <- data.frame(mapplan,visited_01=0)
+mapplan_01
+```
+
+
+# Distance Calculation
+
+Two functions to calcualte the difference between two points and the hole length of the path through the lattice.
+```{r}
+distance_two_points <- function(dataframe,x,y){
+  return(sqrt((dataframe[x,"x"]-dataframe[y,"x"])^2+(dataframe[x,"y"]-dataframe[y,"y"])^2))
+}
+
+distance_overall <- function(dataframe){
+  N<-length(dataframe$x)
+  distanceold <- 0
+  distancenew <- 0
+  for (i in 1:N) {
+    if(i==N) distancenew <- distance_two_points(dataframe,i,1)
+    else distancenew <- distance_two_points(dataframe,i,i+1)
+    distanceold <- distanceold + distancenew
+  }
+  return(distanceold)
+}
+
+```
+# Probability for the ants to visit the next city
+
+Ants leave pheromone trails on their way and so trails with mroe pheromone are used often while the latter decay, So the shortest route is selected. The probability is selcted via:  
+$p_{ij} = \frac{\tau_{ij}^\alpha \cdot \eta_{ij}^\beta}{\sum_{s \in allowed_k}\tau_{is}^\alpha \cdot \eta_{is}^\beta} \qquad j\in allowed_k$  
+and 0 otherwise. $\tau_{ij}$ is the intensity of pheromone trail between cities $i$ and $j$,$\alpha$ the parameter to regulate the influence of $\tau_{ij}$. $\eta_{ij}$ the visibility of city $j$ from city $i$, which is defined as $1/d_{ij}$ (1/distance of the cities), $\beta$ to regulate this influence and $allowed_k$ the set of cities that have not been visited yet respectively.
+Good estimates for $\alpha = 1$ and $\beta = 5$.
+```{r}
+visibility<- function(dataframe,x,y){
+  return(1/(sqrt((dataframe[x,"x"]-dataframe[y,"x"])^2+(dataframe[x,"y"]-dataframe[y,"y"])^2)))
+}
+
+## visibility for the cities
+visibility_all <- matrix(nrow = length(mapplan_01$x),ncol = length(mapplan_01$x))
+
+for (i in 1:length(mapplan_01$x)) {
+  for (j in 1:length(mapplan_01$x)) {
+    visibility_all[i,j] <- visibility(mapplan_01,i,j)
+  }
+}
+#visibility_all
+# to choose one value from column 
+#visibility_all[2,1]
+```
+
+```{r}
+ACO <- function(dataframe){
+  # define the variables and a copy of the mapplan
+  Sold <- numeric()
+  tourplan <- dataframe
+  Backup <- dataframe
+  N <- length(dataframe$x)
+  Q <- 1
+  rho <- 0.3
+  a <- 1
+  b <- 5
+  tours <- numeric()
+  iter <- numeric()
+  best_solution <- 10^20
+  #starting pheromone trail
+  pheromone_all <- matrix(1,nrow = length(dataframe$x),ncol = length(dataframe$x))
+  
+  for (t in 1:100) {
+    pheromone_update_all <- matrix(0,nrow = length(dataframe$x),ncol = length(dataframe$x))
+   
+    for (k in 1:100) {
+      # define the values for ant k, the start city is choosen randomly
+      tourplan <- Backup
+      start_city <- sample.int(size = 1, n=N)
+      #print(start_city)
+      tourplan[start_city,"visited_01"] <-1
+      ordering <- numeric()
+      ordering <- append(ordering,start_city)
+      marker <- start_city
+      # the calculation of the tour of ant k
+      for (n in 2:N) {
+        
+        Abweichung <-1
+        sum_01<- 0
+        sum_new_01 <- 0
+        for (i in 1:N) {
+          sum_new_01<-pheromone_all[marker,i]^a*visibility_all[marker,i]^b
+          if(i %in% ordering) sum_new_01<-0
+          sum_01 <- sum_new_01+sum_01
+        }
+        probs_01 <- numeric()
+        for (i in 1:N) {
+          if(i %in% ordering) probs_01 <-append(probs_01,0)
+          else probs_01 <-append(probs_01,(pheromone_all[marker,i]^a*visibility_all[marker,i]^b)/sum_01)
+        }
+        #print(probs_01)
+        # with the sum the probabilty for the next city is calculated
+        
+        next_city <- runif(1)
+        #print(next_city)
+        neuer_zufall <- 1
+        for (i in 1:N) {
+          if (neuer_zufall > next_city && neuer_zufall-probs_01[i] < next_city && probs_01[i] != 0){
+          Abweichung <- abs(next_city-probs_01[i])
+          marker <- i
+          break
+          }
+          neuer_zufall <- neuer_zufall - probs_01[i]
+        }
+        # the next city is choosen and marked as visited, the next city will be saved and then used as the new start city
+        # until all citis are visited8
+        tourplan[marker,"visited_01"] <- n
+       
+        ordering <- append(ordering,marker)
+      }
+      # print(tourplan[,"visited_01"])
+      # the tour is sorted and the distance of the tour is calculated
+      tourplan <- tourplan[order(tourplan$visited_01),]
+      shortest_tour <- tourplan
+      L <- distance_overall(tourplan)
+      tours <- append(tours,L)
+      if (L<best_solution){
+        best_solution<-L
+        best_path <- tourplan
+      }
+      # the pheromone trail for ant k is saved noch fraglich wohin
+      pheromone_update_k <- matrix(0,nrow = N,ncol = N)
+      for (i in 1:N) {
+        if (i!=N) {
+          pheromone_update_k[tourplan$point[i],tourplan$point[i+1]]<-1
+        }
+        pheromone_update_k[tourplan$point[N],tourplan$point[1]]<-1
+      }
+      #print(pheromone_update_k)
+      pheromone_update_all <- pheromone_update_all + pheromone_update_k*(Q/L)
+    }
+    
+    Sold <- append(Sold, min(tours))
+    tours<- numeric()
+    #print(pheromone_all)
+    pheromone_all <- rho*pheromone_all + pheromone_update_all
+    print(t)
+    iter <- append(iter,t)
+    if (best_solution<=7542) break
+  }
+  
+  df <- data.frame(iter=iter,Sold=Sold, best_solution=best_solution)
+  write.csv(df, "ACO_bier127_III.txt",row.names = FALSE)
+  write.csv(best_path,"ACO_bier127_Path_III.txt",row.names = FALSE)
+  ergebnis <- list(L = L, shortets_tour = shortest_tour,Sold=Sold,iter=iter,best_solution=best_solution,best_path=best_path)
+  return(ergebnis)
+}
+```
+
+```{r}
+Zeit_start <- as.double(Sys.time())
+erg<-ACO(mapplan_01)
+Ende <- as.double(Sys.time()) - Zeit_start
+print(Ende)
+```
+
+```{r}
+erg$best_solution
+erg$best_path
+ordered_mapplan <- erg$best_path[order(erg$best_path$visited_01),]
+# length(ordered_mapplan$x)
+plot(x=ordered_mapplan$x,y=ordered_mapplan$y,xlab = "x",ylab = "y",main="Path",pch=16,cex=0.8,cex.main=1.5,cex.lab=1,cex.axis=0.8,las=1,bty="o")
+#pch type of the points
+# cex size of the points
+# las upright labels
+
+
+s <- seq(length(ordered_mapplan$x)-1)
+arrows(ordered_mapplan$x[s],ordered_mapplan$y[s],ordered_mapplan$x[s+1],ordered_mapplan$y[s+1],length = 0.08,angle = 25, lwd = 1.5)
+arrows(ordered_mapplan$x[length(ordered_mapplan$x)],ordered_mapplan$y[length(ordered_mapplan$x)],ordered_mapplan$x[1],ordered_mapplan$y[1],length = 0.08,angle = 25, lwd = 1.5)
+
+plot(x=erg$iter,y=erg$Sold,xlab = "Iterations",ylab = "Distance",main="",pch=16,cex=0.8,cex.main=1.5,cex.lab=1,cex.axis=0.8,las=1,bty="o")
+```
+
+
+```{r}
+tralal <- c(1:10)
+sum(tralal[0:0])
+```
+
