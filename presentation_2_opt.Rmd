@@ -1,0 +1,241 @@
+---
+title: "Graphik"
+author: "Kristoffer Kerkhof"
+date: "22 2 2020"
+output: html_document
+---
+
+#```{r}
+gitter<-(14*14)
+l<-1
+k<-1
+map <- array(0, dim=c(2,gitter))
+for (i in 1:gitter) {
+      map[1,i] <- k
+      map[2,i] <- l
+      k<-k+1
+      if(k==sqrt(gitter)+1) {
+        k<-1
+        l<-l+1
+      }
+}
+ordering <- sample.int(size=gitter,n=gitter,replace = FALSE) #give every citiy a number in the first tour
+
+mapplan <- data.frame(x=map[1,],y=map[2,],ordering)
+plot(x=mapplan$x,y=mapplan$y,xlab = "",ylab = "",pch=16,cex=0.8,cex.main=1.5,cex.lab=1,cex.axis=0.8,las=1,bty="o")
+#```
+```{r}
+#mapplan <- mapplan[order(mapplan$ordering),]
+#mapplan
+data <- read.csv("TSP.txt",sep = "")
+data2 <-as.matrix(data)
+#data
+#mapplan<- data.frame(x=data$V2,y=data$V3,ordering=data$V1)
+#mapplan["ordering"] <- sample.int(size = 1379, n=1379,replace = FALSE)
+data2
+#data2[11,1]
+#sqrt(length(data2))
+sortierung <- c(1:11)
+#sortierung
+#sortierung<-c(sortierung[-4],sortierung[4])
+switches <- sample.int(11,2,replace = FALSE)
+print(switches)
+sortierung <- ifelse(sortierung==switches[1],12,sortierung)
+sortierung <- ifelse(sortierung==switches[2],13,sortierung)
+sortierung <- ifelse(sortierung==12,switches[2],sortierung)
+sortierung <- ifelse(sortierung==13,switches[1],sortierung)
+sortierung
+new_data <- data2[sortierung,sortierung]
+new_data
+```
+
+# Distance Calculation
+
+Two functions to calcualte the difference between two points and the hole length of the path through the lattice.
+
+
+```{r}
+distance_overal_matrix <-function(matrix){
+  N<- sqrt(length(matrix))
+  sum_all <-0
+  sum_new <-0
+  for (i in 1:(N-1)) {
+    sum_new <- matrix[i,i+1]
+    sum_all <- sum_all + sum_new
+  }
+  sum_all <- sum_all + matrix[N,1]
+  return(sum_all)
+}
+```
+
+# Estimation of the starting temperature
+
+To estimatet a good starting temperatur $T_s$ we perform an initial random walk at an infinite temperature (all moves are accepted) and measre the occuring Distance differences $\Delta H$ and define the starting temperatur with:  
+$T_s = 10\max \{\Delta H\}$  
+The temperature is than logarithmically lowered by:  
+$T_{new} = \alpha T_{old}$b  
+with $\alpha = 0.9$.
+
+```{r}
+Value0<-numeric()
+Value1<-numeric()
+SA <- function(matrix, Temp=100, alpha=0.5){
+  N <- sqrt(length(matrix))
+  Sold <- distance_overal_matrix(matrix)
+  Snull <-distance_overal_matrix(matrix)
+  y <- matrix
+  k <- 0
+  sortierung <- c(1:N)
+  while(k < 1){
+    for (i in 1:100) {
+      switches <- sample.int(11,2,replace = FALSE)
+      #print(N)
+      #print(place)
+      sortierung <- ifelse(sortierung==switches[1],12,sortierung)
+      sortierung <- ifelse(sortierung==switches[2],13,sortierung)
+      sortierung <- ifelse(sortierung==12,switches[2],sortierung)
+      sortierung <- ifelse(sortierung==13,switches[1],sortierung)
+      #print(ordering)
+      y <- y[sortierung,sortierung]
+      Snew <- distance_overal_matrix(y)
+      accept <- FALSE
+      if (Snew < Sold) accept <- TRUE
+      else accept <-TRUE
+      if (accept){
+        matrix <- y
+        Sold <- Snew
+      }
+      else{
+        y <- matrix
+      }
+    }
+    k <- k+1
+    Value0 <- append(Value0, Sold)
+    Value1 <-append(Value1,abs(Snull-Sold))
+  }
+  erg <- list(Value0=Value0,Value1=Value1)
+  return(erg)
+}
+delta_H <- numeric()
+for (i in 1:10) {
+  delta_H <- append(delta_H,SA(data2))
+}
+```
+Getting the starting temperature:
+```{r}
+T_s =10*max(delta_H$Value1)
+T_s
+T_middle = 1/10*max(delta_H$Value1)
+T_middle
+T_end <- T_middle*10^(-3)
+T_end
+```
+
+Now the calculation of the shortest path can occur:
+```{r}
+Path <- numeric()
+Mittelwerte <- numeric()
+Varianzen <- numeric()
+Temperaturen <- numeric()
+Abweichung <- 1000
+SA_new <- function(matrix, Temp=1000){
+  alpha <- 0.99
+  N <- sqrt(length(matrix))
+  sortierung <- c(1:N)
+  Sold <- distance_overal_matrix(matrix)
+  y <- matrix
+  k <- 0
+  iter <- 0
+  Kuchen<-1000
+  while(Temp>=0.01){
+    
+ #   if(Temp>100) {
+#      alpha <- 0.8
+#     Kuchen <-10
+#   }
+#    else if(Temp<=100 && Temp>=0.1) {
+#      alpha <- 0.998
+#      Kuchen <-100
+#    }
+#    else if(Temp<0.1) {
+#      alpha <- 0.8
+#      Kuchen <-10
+#    }
+    
+    S_first <- distance_overal_matrix(matrix)
+    
+    for (i in 1:1) {
+      Speicher_frame <- matrix
+      y<-matrix
+      Sold <- distance_overal_matrix(matrix)
+
+      for (j in 1:Kuchen) {
+      
+        switches <- sample.int(11,2,replace = FALSE)
+        #print(N)
+        #print(place)
+        sortierung <- ifelse(sortierung==switches[1],12,sortierung)
+        sortierung <- ifelse(sortierung==switches[2],13,sortierung)
+        sortierung <- ifelse(sortierung==12,switches[2],sortierung)
+        sortierung <- ifelse(sortierung==13,switches[1],sortierung)
+        #print(ordering)
+        y <- y[sortierung,sortierung]
+        Snew <- distance_overal_matrix(y)
+        accept <- FALSE
+
+        if (Snew < Sold){
+          accept <- TRUE
+        }
+        else if (runif(1) < exp((Sold-Snew)/Temp)){ 
+          accept <-TRUE
+        }
+        if (accept){
+         matrix <- y
+          Sold <- Snew
+        }
+        else{
+          y <- matrix
+        }
+      }
+    Path<-append(Path,Sold)
+    }
+    Mittelwerte <- append(Mittelwerte,mean(Path))
+    Varianzen <- append(Varianzen,var(Path))
+    Temperaturen <- append(Temperaturen,Temp)
+    Sold<-Path
+    #print(Path)
+    #print(Sold)
+    Path<-numeric()
+    Temp <- Temp*alpha
+    k <- k+1
+    print(Temp)
+  }
+  df <- data.frame(Temperaturen = Temperaturen ,Mittelwerte=Mittelwerte,Varianzen=Varianzen)
+ # write.csv(df, "nrw1379_Lin_2_opt_OV.txt",row.names = FALSE)
+  #write.csv(dataframe,"nrw1379_Lin_2_opt_Path_OV.txt",row.names = FALSE)
+  erg <- list(ordering=ordering, Mittelwerte=Mittelwerte, Varianzen=Varianzen, Temperaturen=Temperaturen, matrix=y)
+  return(erg)
+}
+```
+
+```{r}
+Zeit_start <- as.double(Sys.time())
+erg<-SA_new(data2)
+Ende <- as.double(Sys.time()) - Zeit_start
+print(Ende)
+```
+
+
+```{r}
+plot(x=erg$Temperaturen,y=erg$Mittelwerte,xlab = "temperature T",ylab = "Distance",main="",pch=16,cex=0.8,cex.main=1.5,cex.lab=1,cex.axis=0.8,las=1,bty="o",log="x")
+#axis(1,at=c(1e-5,1e-3,1e-1,1e1,1e2),labels = c("0.00001","0.001","0.1","10","1000"))
+erg$Mittelwerte[length(erg$Mittelwerte)]
+```
+
+
+```{r}
+erg$matrix
+distance_overal_matrix(erg$matrix)
+```
+
+
