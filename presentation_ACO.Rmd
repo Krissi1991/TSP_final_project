@@ -1,6 +1,6 @@
 ---
 title: "TSP_new_Version"
-author: "Kristoffer Kerkhof"
+author: "K. Kerkhof, K.Tuteja, A.Wald"
 date: "20 2 2020"
 output: pdf_document
 ---
